@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
+#include <pthread.h>
 #include "png.h"
 
 #define N 4
@@ -123,6 +124,29 @@ double noise2(int x, int y)
 	return (z+1)/2.0;
 }
 
+struct fill_image_data
+{
+	png_image *image;
+	png_bytep buffer;
+	size_t start;
+	size_t end;
+	char finish_message;
+};
+
+void* fill_image(struct fill_image_data *data)
+{
+	size_t i;
+	for (i = data->start; i < data->end; i++) {
+		int t, x, y;
+		t = i / 3;
+		x = t % data->image->width;
+		y = t / data->image->width;
+		data->buffer[i] = 255 * noise2(x, y);
+	}
+	printf("%c", data->finish_message);
+	fflush(stdout);
+}
+
 int main(int argc, char *argv[])
 {
 	png_image image;
@@ -147,53 +171,43 @@ int main(int argc, char *argv[])
 
 	buffer = malloc(PNG_IMAGE_SIZE(image));
 
-	const char* statuses = "a.b.c.d.e.f.g.h.i.j.k.l.m.n.o.p.q.r.s.t.u.v.w.x.y.z.";
-	int status_len = 52;
+	const char* statuses = "abcdefghijklmnopqrstuvwxyz";
+	int status_len = 26;
 	int status_sent = 0;
 
-	int i, j;
+	int nchunks = status_len;
+	size_t chunk_len = PNG_IMAGE_SIZE(image) / nchunks;
+	struct fill_image_data *image_datas;
+	image_datas = calloc(nchunks+1, sizeof(struct fill_image_data));
+
+	pthread_t *threads;
+	threads = calloc(nchunks+1, sizeof(pthread_t));
 	printf("%s\n", statuses);
-	for (i = 0; i < PNG_IMAGE_SIZE(image); i+=1) {
-		if (status_sent < status_len * i /  PNG_IMAGE_SIZE(image)) {
-			printf("%c", statuses[status_sent]);
-			fflush(stdout);
-			status_sent += 1;
-		}
-	#if N==1
-		int t,w,x,y,z;
-		z = i/3;
-		w = (sqrtl(8*z+1)-1)/2;
-		t = (w*w+w)/2;
-		y = z-t;
-		x = w-y;
-		if (x > 255) x = 255;
-		if (y > 255) y = 255;
-		if (i % 3 == 0) buffer[i] = x;
-		else if (i % 3 == 1) buffer[i] = y;
-		else buffer[i] = 0;
-	#elif N==2
-		int t, x, y, z;
-		t = i / 3;
-		x = t % image.width;
-		y = t / image.width;
-		z = ((x+y)*(x+y+1)+y)/2;
-		buffer[i] = z;
-	#elif N==3
-		int t, x, y;
-		t = i / 3;
-		x = t % image.width;
-		y = t / image.width;
-		if (x == 0) j = noise1(y) * image.width;
-		buffer[i] = 255 * (x > j);
-	#elif N==4
-		int t, x, y;
-		t = i / 3;
-		x = t % image.width;
-		y = t / image.width;
-		buffer[i] = 255 * noise2(x, y);
+
+	int i, j;
+	j = 0;
+	for (i = 0; i < nchunks; i++) {
+		image_datas[i].image = &image;
+		image_datas[i].buffer = buffer;
+		image_datas[i].start = j;
+		image_datas[i].end = j + chunk_len;
+		image_datas[i].finish_message = statuses[i];
+		pthread_create(threads+i, NULL, fill_image, image_datas+i);
+		j += chunk_len;
+	#if 1 // Limit number of threads
+		if (i % 8 == 0) pthread_join(threads[i], NULL);
 	#endif
 	}
-	printf("%c", statuses[status_sent]);
+	image_datas[i].image = &image;
+	image_datas[i].buffer = buffer;
+	image_datas[i].start = j;
+	image_datas[i].end = PNG_IMAGE_SIZE(image);
+	image_datas[i].finish_message = statuses[i];
+	pthread_create(threads+i, NULL, fill_image, image_datas+i);
+
+	for (i = 0; i < nchunks+1; i++) {
+		pthread_join(threads[i], NULL);
+	}
 
 	png_image_write_to_file(&image, "out.png", 0, buffer, 0, NULL);
 
