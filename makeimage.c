@@ -139,8 +139,8 @@ int main(int argc, char *argv[])
 
 	image.version = PNG_IMAGE_VERSION;
 	image.opaque = NULL;
-	image.width = 2048;
-	image.height = 2048;
+	image.width = 8192;
+	image.height = 8192;
 	image.format = PNG_FORMAT_RGB;
 	image.flags = 0;
 	image.colormap_entries = 0;
