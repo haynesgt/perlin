@@ -193,6 +193,7 @@ int main(int argc, char *argv[])
 		buffer[i] = 255 * noise2(x, y);
 	#endif
 	}
+	printf("%c", statuses[status_sent]);
 
 	png_image_write_to_file(&image, "out.png", 0, buffer, 0, NULL);
 
